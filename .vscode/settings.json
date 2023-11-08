@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "type_traits": "c",
+        "typeinfo": "c",
+        "memlib.h": "c",
+        "mm.h": "c",
+        "mm_list.h": "c",
+        "mm_block.h": "c"
+    }
+}
