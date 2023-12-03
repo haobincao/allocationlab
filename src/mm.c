@@ -27,21 +27,34 @@ static BlockHeader *free_coalesce(BlockHeader *bp) {
 
     if (prev_alloc && next_alloc) {
         // TODO: add bp to free list
+        mm_list_prepend(bp);
         return bp;
 
     } else if (prev_alloc && !next_alloc) {
         // TODO: remove next block from free list
         // TODO: add bp to free list
         // TODO: coalesce with next block
+        size += mm_block_size(mm_block_next(bp));
+        mm_list_remove(mm_block_next(bp));
+        mm_list_prepend(bp);
+        mm_block_set_header(bp, size, 0);
+        mm_block_set_footer(bp, size, 0);
         return bp;
 
     } else if (!prev_alloc && next_alloc) {
         // TODO: coalesce with previous block
+        size += mm_block_size(mm_block_prev(bp));
+        mm_block_set_header(mm_block_prev(bp),size, 0);
+        mm_block_set_footer(mm_block_prev(bp),size, 0);
         return mm_block_prev(bp);
 
     } else {
         // TODO: remove next block from free list
         // TODO: coalesce with previous and next block
+        size += mm_block_size(mm_block_next(bp)) + mm_block_size(mm_block_prev(bp));
+        mm_list_remove(mm_block_next(bp));
+        mm_block_set_header(mm_block_prev(bp),size, 0);
+        mm_block_set_footer(mm_block_prev(bp),size, 0);
         return mm_block_prev(bp);
     }
 }
@@ -89,12 +102,19 @@ int mm_init(void) {
     heap_blocks += 1;                            // point to the prologue header
 
     // TODO: extend heap with an initial heap size
+    extend_heap(64);
 
     return 0;
 }
 
 void mm_free(void *bp) {
     // TODO: move back 4 bytes to find the block header, then free block
+    if (bp == NULL) {
+        return; 
+    }
+
+    BlockHeader *blockHeader = (BlockHeader *)((char *)bp - 4);
+    free_coalesce(blockHeader);
 }
 
 /**
@@ -106,6 +126,13 @@ void mm_free(void *bp) {
  */
 static BlockHeader *find_fit(int size) {
     // TODO: implement
+    BlockHeader *bp = mm_list_headp;
+    while (bp != NULL) {
+        if (mm_block_size(bp) >= size) {
+            return bp;
+        }
+        bp = mm_list_next(bp);
+    }
     return NULL;
 }
 
@@ -117,9 +144,37 @@ static BlockHeader *find_fit(int size) {
  * @return pointer to the header of the allocated block
  */
 static BlockHeader *place(BlockHeader *bp, int size) {
-    // TODO: if current size is greater, use part and add rest to free list
-    // TODO: return pointer to header of allocated block
-    return NULL;
+    int old_size = mm_block_size(bp);
+    int new_size = old_size - size;
+
+    if (new_size >= 16) {
+        if (size >= 75) {
+            mm_block_set_header(bp, new_size, 1);
+            mm_block_set_footer(bp, new_size, 1);
+            BlockHeader *new_bp = mm_block_next(bp);
+            mm_block_set_header(new_bp, size, 1);
+            mm_block_set_footer(new_bp, size, 1);
+            mm_block_set_header(bp, new_size, 0);
+            mm_block_set_footer(bp, new_size, 0);
+            return new_bp;
+        }
+        else {
+        mm_block_set_header(bp, size, 1);
+        mm_block_set_footer(bp, size, 1);
+        BlockHeader *new_bp = mm_block_next(bp);
+        mm_list_prepend(new_bp);
+        mm_block_set_header(new_bp, new_size, 0);
+        mm_block_set_footer(new_bp, new_size, 0);
+        }
+    }
+    else {
+        mm_block_set_header(bp, old_size, 1);
+        mm_block_set_footer(bp, old_size, 1);
+    }
+
+    mm_list_remove(bp);
+
+    return bp;
 }
 
 /**
@@ -143,29 +198,66 @@ void *mm_malloc(size_t size) {
 
     // TODO: find a free block or extend heap
     // TODO: allocate and return pointer to payload
-    return NULL;
+    BlockHeader* temp = find_fit(required_size);
+    while (temp == NULL) {
+        int tempp;
+        if (required_size > 512) {
+            tempp = required_size;
+        }
+        else {
+            tempp = 512;
+        }
+        extend_heap(tempp);
+        temp = find_fit(required_size);
+    }
+    BlockHeader* result = place(temp,required_size);
+    return (BlockHeader *)((char *)result + 4);
 }
 
 void *mm_realloc(void *ptr, size_t size) {
-
+    // Equivalent to malloc if ptr is NULL
     if (ptr == NULL) {
-        // equivalent to malloc
         return mm_malloc(size);
+    }
 
-    } else if (size == 0) {
-        // equivalent to free
+    // Equivalent to free if size is 0
+    if (size == 0) {
         mm_free(ptr);
         return NULL;
-
-    } else {
-        // TODO: reallocate, reusing current block if possible
-        // TODO: copy data over new block with memcpy
-        // TODO: return pointer to payload of new block
-
-        // TODO: remove this naive implementation
-        void *new_ptr = mm_malloc(size);
-        memcpy(new_ptr, ptr, MIN(size, (unsigned)mm_block_size(ptr-4) - 8));
-        mm_free(ptr);
-        return new_ptr;
     }
+
+    BlockHeader *block_header = (BlockHeader *)((char *)ptr - 4);
+    size_t old_size = mm_block_size(block_header) - 8;
+
+    if (size <= old_size) {
+        return ptr;
+    }
+
+    BlockHeader *next_block = mm_block_next(block_header);
+    if (!mm_block_allocated(next_block)) {
+        size_t combined_size = mm_block_size(block_header) + mm_block_size(next_block);
+        if (combined_size - 8 >= size) {
+            mm_list_remove(next_block);
+            mm_block_set_header(block_header, combined_size, 1);
+            mm_block_set_footer(block_header, combined_size, 1);
+            return ptr;
+        }
+    }
+
+    void *new_ptr = mm_malloc(size);
+    if (new_ptr == NULL) {
+        return NULL;
+    }
+    int tempp;
+    if (old_size > size) {
+        tempp = size;
+    }
+    else {
+        tempp = old_size;
+    }
+    memcpy(new_ptr, ptr, tempp);
+    mm_free(ptr);
+    
+    return new_ptr;
 }
+

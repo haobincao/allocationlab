@@ -77,6 +77,17 @@ static void mm_list_next_set(BlockHeader *bp, BlockHeader *next) {
  */
 void mm_list_prepend(BlockHeader *bp) {
     // TODO: implement
+    if (mm_list_headp != NULL) {
+        mm_list_next_set(bp,mm_list_headp);
+        mm_list_prev_set(bp,NULL);
+        mm_list_prev_set(mm_list_headp,bp);
+    }
+    else {
+        mm_list_tailp = bp;
+        mm_list_next_set(bp,NULL);
+        mm_list_prev_set(bp,NULL);
+    }
+    mm_list_headp = bp;
 }
 
 /**
@@ -86,6 +97,17 @@ void mm_list_prepend(BlockHeader *bp) {
  */
 void mm_list_append(BlockHeader *bp) {
     // TODO: implement
+    if (mm_list_tailp != NULL) {
+        mm_list_prev_set(bp,mm_list_tailp);
+        mm_list_next_set(bp,NULL);
+        mm_list_next_set(mm_list_tailp,bp);
+    }
+    else {
+        mm_list_headp = bp;
+        mm_list_next_set(bp,NULL);
+        mm_list_prev_set(bp,NULL);
+    }
+    mm_list_tailp = bp;
 }
 
 /**
@@ -95,4 +117,22 @@ void mm_list_append(BlockHeader *bp) {
  */
 void mm_list_remove(BlockHeader *bp) {
     // TODO: implement
+    if (bp == mm_list_headp && bp == mm_list_tailp) {
+        mm_list_headp = NULL;
+        mm_list_tailp = NULL;
+    }
+    else if (bp == mm_list_headp) {
+        mm_list_prev_set(mm_list_next(bp),NULL);
+        mm_list_headp = mm_list_next(bp);
+    }
+    else if (bp == mm_list_tailp) {
+        mm_list_next_set(mm_list_prev(bp),NULL);
+        mm_list_tailp = mm_list_prev(bp);
+    }
+    else {
+        mm_list_prev_set(mm_list_next(bp),mm_list_prev(bp));
+        mm_list_next_set(mm_list_prev(bp),mm_list_next(bp));
+    }
+    mm_list_prev_set(bp, NULL);
+    mm_list_next_set(bp, NULL);
 }
